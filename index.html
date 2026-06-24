@@ -218,7 +218,7 @@
   /* ===================================================================
    * CONFIG — paste your deployed Apps Script /exec URL here.
    * =================================================================== */
-  const API_URL = "https://script.google.com/macros/s/AKfycbzcZSU23i5Bv1P0d9Ydj_cy1VdFgZeYBix9U4-7Qt3jxI2sQEIg8YOjcrD2olUqko0z/exec";
+  const API_URL = "PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE";
 
   /* ===================================================================
    * GAME DATA — 30 variants across 10 core keywords.
@@ -408,9 +408,7 @@
 
   // ---- Phase 1: guess the keyword ----
   function handlePhase1(text) {
-    const guess = text.toLowerCase();
-    const kw = current.keyword.toLowerCase();
-    if (guess.includes(kw)) {
+    if (keywordMatches(text, current.keyword)) {
       addBubble("npc", "✓ Correct. The word is \"" + current.keyword + "\". Now prove you can use it.");
       phase = 2;
       setTimeout(() => {
@@ -424,12 +422,11 @@
 
   // ---- Phase 2: build a sentence ----
   async function handlePhase2(text) {
-    const kw = current.keyword.toLowerCase();
     const lower = text.toLowerCase();
     const words = text.split(/\s+/).filter(Boolean);
 
-    // Local check A: must contain the keyword.
-    if (!lower.includes(kw)) {
+    // Local check A: must contain the keyword (any natural tense/number).
+    if (!keywordMatches(text, current.keyword)) {
       addBubble("hint", current.hintExample);
       addBubble("npc", "Your pitch must actually use the word \"" + current.keyword + "\".");
       return;
@@ -440,8 +437,9 @@
       addBubble("npc", "Too thin. Investors need at least 8 words of substance.");
       return;
     }
-    // Local check C: block lazy "The [keyword] is ..." openers.
-    const lazy = new RegExp("^(the|a|an)\\s+" + escapeRegex(kw) + "\\s+(is|are|was|were)\\b", "i");
+    // Local check C: block lazy "The [keyword] is ..." openers (any inflection).
+    const kwHead = escapeRegex(current.keyword.toLowerCase().split(/\s+/)[0]);
+    const lazy = new RegExp("^(the|a|an)\\s+" + kwHead + "(?:s|es)?\\s+(is|are|was|were)\\b", "i");
     if (lazy.test(text.trim())) {
       addBubble("hint", current.hintExample);
       addBubble("npc", "Don't just define it. Give me a real pitch, not a dictionary entry.");
@@ -544,6 +542,49 @@
   }
   function escapeText(s) { return String(s); }
   function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  /* ===================================================================
+   * INFLECTION-AWARE KEYWORD MATCHING
+   * Accepts natural tense/number variants so "boils down to",
+   * "curated", "disrupting", "obsolete" etc. all count as a match.
+   * For multi-word keywords, only the verb-like words inflect; the
+   * particles ("down", "to", "of", "the", "curve") stay fixed but the
+   * gap between words is flexible (allows "boils it down to").
+   * =================================================================== */
+
+  // Words in a phrasal keyword that should NOT be inflected.
+  const FIXED_PARTICLES = new Set(["down","to","of","the","up","out","off","in","on","a","an","ahead","curve"]);
+
+  // Build a regex fragment that matches one word plus common inflections.
+  function inflectFragment(word) {
+    const lw = word.toLowerCase();
+    // Words ending in silent -e drop it before -ing/-ed (curate->curating, phase->phasing).
+    if (lw.endsWith("e")) {
+      const stem = escapeRegex(lw.slice(0, -1)); // "curat", "phas"
+      const full = escapeRegex(lw);              // "curate", "phase"
+      // full + (s|d) OR stem + (ing|ings|ed)
+      return "\\b(?:" + full + "(?:s|d)?|" + stem + "(?:e(?:s|d)?|ing|ings|ed))\\b";
+    }
+    const w = escapeRegex(lw);
+    return "\\b" + w + "(?:s|es|ed|d|ing|ings)?\\b";
+  }
+
+  // Build a full regex for the keyword (single or multi-word).
+  function buildKeywordRegex(keyword) {
+    const parts = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+    const frags = parts.map(p =>
+      FIXED_PARTICLES.has(p) ? "\\b" + escapeRegex(p) + "\\b" : inflectFragment(p)
+    );
+    // Allow up to 2 extra words between phrase parts (e.g. "boils it all down to").
+    const joiner = "(?:\\s+\\w+){0,2}\\s+";
+    const body = frags.length === 1 ? frags[0] : frags.join(joiner);
+    return new RegExp(body, "i");
+  }
+
+  // Does the text contain the keyword in any natural form?
+  function keywordMatches(text, keyword) {
+    return buildKeywordRegex(keyword).test(text);
+  }
 </script>
 </body>
 </html>
