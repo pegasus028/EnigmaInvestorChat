@@ -391,8 +391,8 @@
 
     timePoll = setInterval(syncTime, 3000);
 
-    addBubble("npc", "Welcome, " + escapeText(playerName) + ". I'm the Lead Investor. Impress me with your vocabulary and I'll raise your valuation. Waste my time and you get nothing.");
-    nextWord();
+    addBubble("npc", "Welcome, " + escapeText(playerName) + "! I'm the Lead Investor. Show me your business vocabulary and I'll raise your valuation. Let's see what you've got \u2014 ready when you are.");
+    nextWord(true);
   }
 
   async function syncTime() {
@@ -420,13 +420,14 @@
   /* ===================================================================
    * GAMEPLAY LOOP
    * =================================================================== */
-  function nextWord() {
+  function nextWord(isFirst) {
     current = QUESTIONS[Math.floor(Math.random() * QUESTIONS.length)];
     phase = 1;
+    const label = isFirst ? "🔎 RIDDLE: " : "🔎 NEW RIDDLE: ";
     setTimeout(() => {
-      addBubble("npc", "🔎 RIDDLE: " + current.riddle);
-      addBubble("system", "Name the single vocabulary word that fits.");
-    }, 450);
+      addBubble("npc", label + current.riddle);
+      addBubble("system", "Reply with just ONE word that fits the clue.");
+    }, 250);
   }
 
   async function submitMsg() {
@@ -448,14 +449,14 @@
   // ---- Phase 1: guess the keyword ----
   function handlePhase1(text) {
     if (keywordMatches(text, current.keyword)) {
-      addBubble("npc", "✓ Correct. The word is \"" + current.keyword + "\". Now prove you can use it.");
+      addBubble("npc", "✓ Exactly right \u2014 the word is \u201C" + current.keyword + ".\u201D Now let's put it to work.");
       phase = 2;
       setTimeout(() => {
         addBubble("npc", "💼 PITCH TASK: " + current.sentencePrompt);
-        addBubble("system", "Use \"" + current.keyword + "\" in a full business sentence (8+ words).");
+        addBubble("system", "Use \u201C" + current.keyword + "\u201D in a full business sentence (8+ words).");
       }, 400);
     } else {
-      addBubble("npc", "That is not the word. Try again.");
+      addBubble("npc", "Not quite \u2014 give it another try. Reread the clue and think of one word.");
     }
   }
 
@@ -467,13 +468,13 @@
     // Local check A: must contain the keyword (any natural tense/number).
     if (!keywordMatches(text, current.keyword)) {
       addBubble("hint", current.hintExample);
-      addBubble("npc", "Your pitch must actually use the word \"" + current.keyword + "\".");
+      addBubble("npc", "Don't forget to include the word \u201C" + current.keyword + "\u201D in your sentence. Give it another go!");
       return;
     }
     // Local check B: at least 8 words.
     if (words.length < 8) {
       addBubble("hint", current.hintExample);
-      addBubble("npc", "Too thin. Investors need at least 8 words of substance.");
+      addBubble("npc", "Good start! Try expanding it into a fuller sentence \u2014 at least 8 words.");
       return;
     }
     // Local check C: block lazy "The [keyword] is ..." openers (any inflection).
@@ -481,7 +482,7 @@
     const lazy = new RegExp("^(the|a|an)\\s+" + kwHead + "(?:s|es)?\\s+(is|are|was|were)\\b", "i");
     if (lazy.test(text.trim())) {
       addBubble("hint", current.hintExample);
-      addBubble("npc", "Don't just define it. Give me a real pitch, not a dictionary entry.");
+      addBubble("npc", "That's a definition \u2014 try turning it into a real pitch instead. The hint above can help.");
       return;
     }
 
@@ -498,16 +499,19 @@
       if (data && data.ok && data.pass === true) {
         const gained = computeScore(words.length, lower);
         score += gained;
-        addBubble("npc pass", data.feedback || "Impressive. Approved.");
+        const closedWord = current.keyword;
+        addBubble("npc pass", data.feedback || "Nicely done — that's a strong, clear pitch!");
         addGain("▲ Valuation +" + fmtMoney(gained));
         updateHUD();
         await postJSON({ action: "updateScore", name: playerName, totalScore: score });
-        // Immediately move to a fresh random word.
+        // Clear "this word is finished" beat, then a fresh word after a pause
+        // so the new riddle never crowds the congratulatory message.
+        addBubble("system", "✅ Deal closed on \u201C" + closedWord + ".\u201D Here comes your next word\u2026");
         busy = false;
         setInputEnabled(true);
-        nextWord();
+        setTimeout(nextWord, 1100);
       } else {
-        addBubble("npc", (data && data.feedback) ? data.feedback : "Not convincing enough. Refine your pitch and try again.");
+        addBubble("npc", (data && data.feedback) ? data.feedback : "Almost there! Add a little more business detail and try once more — you've got this.");
         busy = false;
         setInputEnabled(true);
       }
