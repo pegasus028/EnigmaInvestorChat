@@ -173,9 +173,30 @@
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
+      redirect: "follow",
       body: JSON.stringify(payload)
     });
-    return res.json();
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch (e) {
+      const a = text.indexOf("{"), b = text.lastIndexOf("}");
+      if (a !== -1 && b !== -1) { try { return JSON.parse(text.substring(a, b + 1)); } catch (e2) {} }
+      return { ok: true, _softParse: true };
+    }
+  }
+
+  // Cache-busted GET, tolerant of Apps Script redirect-to-HTML responses.
+  async function getJSON(action) {
+    const sep = API_URL.indexOf("?") === -1 ? "?" : "&";
+    const url = API_URL + sep + "action=" + encodeURIComponent(action) + "&t=" + Date.now();
+    const res = await fetch(url, { method: "GET", redirect: "follow" });
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch (e) {
+      const a = text.indexOf("{"), b = text.lastIndexOf("}");
+      if (a !== -1 && b !== -1) return JSON.parse(text.substring(a, b + 1));
+      throw new Error("Non-JSON response");
+    }
   }
 
   async function startGame() {
@@ -245,8 +266,7 @@
 
   async function refresh() {
     try {
-      const res = await fetch(API_URL + "?action=leaderboard");
-      const data = await res.json();
+      const data = await getJSON("leaderboard");
       if (!data || !data.ok) return;
       setStatus(data.gameState, data.timeRemaining);
       renderLeaderboard(data.leaderboard);
